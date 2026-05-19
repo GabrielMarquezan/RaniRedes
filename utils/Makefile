@@ -11,14 +11,14 @@ P4C_ARGS += --p4runtime-files $(BUILD_DIR)/$(basename $@).p4.p4info.txtpb
 RUN_SCRIPT = ../../utils/run_exercise.py
 
 ifndef TOPO
-TOPO = topology.json
+TOPO = /home/p4/tutorials/exercises/basic/topo_trabalho2.json
 endif
 
 source = $(wildcard *.p4)
 compiled_json := $(source:.p4=.json)
 
 ifndef DEFAULT_PROG
-DEFAULT_PROG = $(wildcard *.p4)
+DEFAULT_PROG = telemetria_trabalho2.p4
 endif
 DEFAULT_JSON = $(BUILD_DIR)/$(DEFAULT_PROG:.p4=.json)
 
