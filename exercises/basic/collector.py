@@ -6,7 +6,7 @@ TYPE_TELEMETRY = 0x88B5
 
 class Telemetry(Packet):
     name = "TelemetryHeader"
-    fields = [
+    fields_desc = [
         IntField("packet_count", 0),
         IntField("byte_count", 0),
         IntField("icmp_count", 0),
@@ -16,7 +16,6 @@ class Telemetry(Packet):
 bind_layers(Ether, Telemetry, type=TYPE_TELEMETRY)
 
 def handle_pkt(pkt):
-    # Confirma dupla verificação se a camada existe no pacote
     if Telemetry in pkt:
         telemetry_layer = pkt[Telemetry]
         now = datetime.now().strftime("%H:%M:%S")
@@ -29,7 +28,7 @@ def handle_pkt(pkt):
         print("-" * 50)
 
 def main():
-    interface = "h3-eth0" 
+    interface = "eth0" 
     print(f"Iniciando coletor de telemetria na interface {interface}.")
     print(f"Aguardando pacotes com EtherType {hex(TYPE_TELEMETRY)}.\n")
     print("-" * 50)

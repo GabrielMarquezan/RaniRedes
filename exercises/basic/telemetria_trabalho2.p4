@@ -2,7 +2,7 @@
 #include <v1model.p4>
 
 const bit<16> TYPE_IPV4 = 0x0800;
-const bit<16> TYPE_TELEMETRY = 0x88B5; // EtherType customizado para o coletor
+const bit<16> TYPE_TELEMETRY = 0x88B5;
 const bit<8>  IP_PROTO_ICMP = 1;
 
 typedef bit<9>  egressSpec_t;
@@ -30,7 +30,6 @@ header ipv4_t {
     ip4Addr_t dstAddr;
 }
 
-// Cabeçalho customizado de telemetria
 header telemetry_t {
     bit<32> packet_count;
     bit<32> byte_count;
@@ -38,7 +37,6 @@ header telemetry_t {
     bit<8>  min_ttl;
 }
 
-// Metadados para transportar o estado do Ingress para o Egress no pacote clonado
 struct metadata {
     bit<32> telemetry_pkt_count;
     bit<32> telemetry_byte_count;
@@ -79,6 +77,15 @@ control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
     apply { } 
 }
 
+register<bit<32>>(1) reg_pkt_count;
+register<bit<32>>(1) reg_byte_count;
+register<bit<32>>(1) reg_icmp_count;
+register<bit<8>>(1)  reg_min_ttl;
+register<bit<32>>(1) snap_pkt_count;
+register<bit<32>>(1) snap_byte_count;
+register<bit<32>>(1) snap_icmp_count;
+register<bit<8>>(1)  snap_min_ttl;
+
 control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
@@ -114,19 +121,16 @@ control MyIngress(inout headers hdr,
 
     apply {  
         if (hdr.ipv4.isValid()) {
-            // Variáveis locais para manipular o estado
             bit<32> pkt_count;
             bit<32> byte_count;
             bit<32> icmp_count;
             bit<8> min_ttl;
 
-            // 1. Leitura do estado atual
             reg_pkt_count.read(pkt_count, 0);
             reg_byte_count.read(byte_count, 0);
             reg_icmp_count.read(icmp_count, 0);
             reg_min_ttl.read(min_ttl, 0);
 
-            // 2. Atualização das métricas
             pkt_count = pkt_count + 1;
             byte_count = byte_count + (bit<32>)standard_metadata.packet_length;
             
@@ -134,36 +138,29 @@ control MyIngress(inout headers hdr,
                 icmp_count = icmp_count + 1;
             }
 
-            // O TTL mínimo começa a 0 ou é atualizado se for menor que o valor guardado
             if (min_ttl == 0 || hdr.ipv4.ttl < min_ttl) {
                 min_ttl = hdr.ipv4.ttl;
             }
 
-            // 3. Verificação da Janela (N = 10 pacotes)
             if (pkt_count == 10) {
-                // Prepara os metadados para serem passados ao clone
-                meta.telemetry_pkt_count = pkt_count;
-                meta.telemetry_byte_count = byte_count;
-                meta.telemetry_icmp_count = icmp_count;
-                meta.telemetry_min_ttl = min_ttl;
+                snap_pkt_count.write(0, pkt_count);
+                snap_byte_count.write(0, byte_count);
+                snap_icmp_count.write(0, icmp_count);
+                snap_min_ttl.write(0, min_ttl);
 
-                // Aciona a clonagem de Ingress para Egress na sessão 100
                 clone(CloneType.I2E, 100);
 
-                // Reset da janela de estado
                 reg_pkt_count.write(0, 0);
                 reg_byte_count.write(0, 0);
                 reg_icmp_count.write(0, 0);
                 reg_min_ttl.write(0, 0);
             } else {
-                // Guarda o estado atualizado para o próximo pacote
                 reg_pkt_count.write(0, pkt_count);
                 reg_byte_count.write(0, byte_count);
                 reg_icmp_count.write(0, icmp_count);
                 reg_min_ttl.write(0, min_ttl);
             }
                                            
-            // 4. Encaminhamento padrão (modificado para permitir qualquer tráfego IPv4)
             if (hdr.ipv4.ttl > 1) { 
                 ipv4_lpm.apply();
             } else {
@@ -179,18 +176,24 @@ control MyEgress(inout headers hdr,
                  inout metadata meta,
                  inout standard_metadata_t standard_metadata) {
     apply {
-        // Verifica se é um pacote clonado (instance_type == 1 representa ingress-to-egress clone)
         if (standard_metadata.instance_type == 1) {
-            // Torna o cabeçalho de telemetria válido
+            
+            bit<32> snap_pkt;
+            bit<32> snap_byte;
+            bit<32> snap_icmp;
+            bit<8>  snap_ttl;
+
+            snap_pkt_count.read(snap_pkt, 0);
+            snap_byte_count.read(snap_byte, 0);
+            snap_icmp_count.read(snap_icmp, 0);
+            snap_min_ttl.read(snap_ttl, 0);
+
             hdr.telemetry.setValid();
+            hdr.telemetry.packet_count = snap_pkt;
+            hdr.telemetry.byte_count = snap_byte;
+            hdr.telemetry.icmp_count = snap_icmp;
+            hdr.telemetry.min_ttl = snap_ttl;
             
-            // Preenche o cabeçalho com os dados obtidos no momento da clonagem
-            hdr.telemetry.packet_count = meta.telemetry_pkt_count;
-            hdr.telemetry.byte_count = meta.telemetry_byte_count;
-            hdr.telemetry.icmp_count = meta.telemetry_icmp_count;
-            hdr.telemetry.min_ttl = meta.telemetry_min_ttl;
-            
-            // Modifica o EtherType para que o coletor no h3 identifique o pacote de telemetria
             hdr.ethernet.etherType = TYPE_TELEMETRY;
         }
     }                                                
@@ -218,7 +221,6 @@ control MyComputeChecksum(inout headers hdr, inout metadata meta) {
 
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
-        // Emite os cabeçalhos. O cabeçalho de telemetria só será emitido nos clones onde foi feito setValid().
         packet.emit(hdr.ethernet);
         packet.emit(hdr.telemetry);
         packet.emit(hdr.ipv4);
