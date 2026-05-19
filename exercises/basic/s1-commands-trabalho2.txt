@@ -1,1 +1,0 @@
-mirroring_add 100 3
