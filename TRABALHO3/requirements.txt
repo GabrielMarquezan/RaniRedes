@@ -1,0 +1,6 @@
+# Trabalho 3 — Dependências Python
+# Instalar com:  pip install -r requirements.txt --break-system-packages
+
+flask==3.0.3
+flask-socketio==5.3.6
+eventlet==0.36.1        # backend assíncrono opcional (alternativa ao threading)

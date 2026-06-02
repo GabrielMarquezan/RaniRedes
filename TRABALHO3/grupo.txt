@@ -1,0 +1,7 @@
+Grupo: NN
+Integrantes:
+  - Nome Completo 1  (matrícula)
+  - Nome Completo 2  (matrícula)
+  - Nome Completo 3  (matrícula)
+Disciplina: Redes de Computadores
+Trabalho: 3 — Controlador de Telemetria P4

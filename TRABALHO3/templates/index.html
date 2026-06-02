@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>P4 Telemetry Dashboard</title>
+
+  <!-- Chart.js para os gráficos de linha -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- Socket.IO client -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <!-- Nosso CSS -->
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- Header                                                                -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <header>
+    <div class="header-inner">
+      <div class="header-left">
+        <span class="logo-icon">◈</span>
+        <div>
+          <h1>P4 Telemetry Dashboard</h1>
+          <p class="subtitle">Trabalho 3 — Monitoramento de Switches em Tempo Real</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="status-badge" id="status-badge">
+          <span class="status-dot"></span>
+          <span id="status-text">Aguardando…</span>
+        </div>
+        <div class="counter-chip">
+          <span id="switch-count">0</span>
+          <span class="chip-label">switch(es)</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- Conteúdo principal                                                    -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <main>
+
+    <!-- Placeholder quando nenhum dado chegou ainda -->
+    <div id="no-data-msg" class="no-data">
+      <div class="no-data-icon">⬡</div>
+      <p>Nenhuma telemetria recebida ainda.</p>
+      <p class="hint">Inicie o switch P4 ou o simulador:<br>
+        <code>python3 telemetry_simulator.py</code></p>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────────── -->
+    <!-- Tabela de valores atuais                                            -->
+    <!-- ─────────────────────────────────────────────────────────────────── -->
+    <section id="table-section" class="card hidden">
+      <div class="card-header">
+        <h2>▸ Valores Atuais</h2>
+        <span class="card-hint">Última atualização por switch</span>
+      </div>
+      <div class="table-wrapper">
+        <table id="metrics-table">
+          <thead>
+            <tr>
+              <th>Switch</th>
+              <th>Pacotes</th>
+              <th>Bytes</th>
+              <th>ICMP</th>
+              <th>TTL mín.</th>
+              <th>Última Atualização</th>
+            </tr>
+          </thead>
+          <tbody id="metrics-tbody">
+            <!-- preenchido por dashboard.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────────────────────── -->
+    <!-- Área de gráficos (criada dinamicamente por switch)                 -->
+    <!-- ─────────────────────────────────────────────────────────────────── -->
+    <div id="charts-area"></div>
+
+    <!-- ─────────────────────────────────────────────────────────────────── -->
+    <!-- Histórico de mensagens                                              -->
+    <!-- ─────────────────────────────────────────────────────────────────── -->
+    <section id="history-section" class="card hidden">
+      <div class="card-header">
+        <h2>▸ Histórico de Amostras</h2>
+        <div class="history-controls">
+          <label for="filter-switch">Switch:</label>
+          <select id="filter-switch">
+            <option value="all">Todos</option>
+          </select>
+          <button id="clear-history-btn" class="btn-ghost">Limpar</button>
+        </div>
+      </div>
+      <div class="history-scroll">
+        <table id="history-table">
+          <thead>
+            <tr>
+              <th>Horário</th>
+              <th>Switch</th>
+              <th>Pacotes</th>
+              <th>Bytes</th>
+              <th>ICMP</th>
+              <th>TTL mín.</th>
+            </tr>
+          </thead>
+          <tbody id="history-tbody">
+            <!-- preenchido por dashboard.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- Footer                                                                -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <footer>
+    <span>P4 Telemetry Dashboard — Trabalho 3 &nbsp;|&nbsp; BMv2 + Mininet + Flask</span>
+  </footer>
+
+  <!-- Nosso JS -->
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>

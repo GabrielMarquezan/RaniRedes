@@ -1,0 +1,27 @@
+{
+  "desc": "Topologia Trabalho 3 — 1 switch P4 (BMv2) e 3 hosts",
+  "hosts": [
+    { "name": "h1", "ip": "10.0.0.1/24", "mac": "00:00:00:00:00:01" },
+    { "name": "h2", "ip": "10.0.0.2/24", "mac": "00:00:00:00:00:02" },
+    { "name": "h3", "ip": "10.0.0.3/24", "mac": "00:00:00:00:00:03" }
+  ],
+  "switches": [
+    {
+      "name": "s1",
+      "id":   1,
+      "type": "bmv2",
+      "program": "telemetry.p4",
+      "telemetry": {
+        "protocol":    "UDP",
+        "dst_ip":      "10.0.0.254",
+        "dst_port":    9999,
+        "switch_id":   1
+      }
+    }
+  ],
+  "links": [
+    { "src": "h1", "dst": "s1", "src_port": 1, "dst_port": 1 },
+    { "src": "h2", "dst": "s1", "src_port": 1, "dst_port": 2 },
+    { "src": "h3", "dst": "s1", "src_port": 1, "dst_port": 3 }
+  ]
+}
