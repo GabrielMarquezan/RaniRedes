@@ -709,10 +709,10 @@ python3 controller_trabalho4.py
 # Terminal 3 — topologia
 sudo python3 topo_trabalho3.py
 
-# Dentro do Mininet, iniciar exportador
-mininet> h1 xterm -e "python3 p4_register_exporter.py --thrift-port 9090 --switch-id 1 --controller 127.0.0.1"
+# Fora do Mininet (host root), iniciar exportador
+python3 p4_register_exporter.py --thrift-port 9090 --switch-id 1 --controller 127.0.0.1
 
-# Em outro terminal do h1, gerador de tráfego
+# Dentro do Mininet, no host h1, iniciar gerador de tráfego
 mininet> h1 python3 traffic_generator.py
 ```
 

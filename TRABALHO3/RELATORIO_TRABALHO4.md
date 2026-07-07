@@ -26,11 +26,11 @@ Quando a taxa de pacotes provenientes do host `h1` (IP `10.0.0.1`) ultrapassa um
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Mininet + BMv2 (s1)                                        │
-│  ┌──────────────┐   Thrift   ┌──────────────────────────┐  │
-│  │ telemetry.p4 │◄───────────│ p4_register_exporter.py  │  │
-│  │  registradores            │  lê regs e envia UDP     │  │
-│  │  drop_table               └──────────┬───────────────┘  │
-│  └──────────────┘                      UDP 9999            │
+│  ┌──────────────┐   Thrift   ┌──────────────────────────┐   │
+│  │ telemetry.p4 │◄───────────│ p4_register_exporter.py  │   │
+│  │  registradores            │  lê regs e envia UDP     │   │
+│  │  drop_table               └──────────┬───────────────┘   │
+│  └──────────────┘                      UDP 9999             │
 │         ▲                                  │                │
 │         │  regras via CLI                  ▼                │
 │  simple_switch_CLI                 ┌──────────────────┐     │
@@ -142,15 +142,15 @@ sudo python3 topo_trabalho3.py
 
 ### 7.4 Início do exportador de registradores
 
-Dentro do Mininet:
+O exportador deve ser executado **fora do Mininet**, em um terminal comum do host (root), pois precisa acessar a porta Thrift `9090` do BMv2 e enviar UDP ao controlador — ambos rodam no namespace do host, não dentro dos hosts `h1`, `h2` ou `h3`.
 
-```
-mininet> h1 xterm -e "python3 p4_register_exporter.py --thrift-port 9090 --switch-id 1 --controller 127.0.0.1"
+```bash
+python3 p4_register_exporter.py --thrift-port 9090 --switch-id 1 --controller 127.0.0.1
 ```
 
 ### 7.5 Geração de tráfego
 
-Em outro terminal do host `h1`:
+Dentro do Mininet, no host `h1`:
 
 ```
 mininet> h1 python3 traffic_generator.py

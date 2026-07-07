@@ -80,7 +80,7 @@ def read_all_registers(thrift_port: int) -> dict:
 # Empacotamento e envio UDP
 # ─────────────────────────────────────────────────────────────────────────────
 
-TELEMETRY_FORMAT = "!IQQIb"
+TELEMETRY_FORMAT = "!IQQIB"
 
 def send_telemetry(sock: socket.socket, controller_addr: tuple,
                    switch_id: int, regs: dict) -> None:

@@ -51,10 +51,16 @@ class TelemetryTopo(Topo):
         h3 = self.addHost('h3', ip='10.0.0.3/24', mac='00:00:00:00:00:03')
 
         # Switch P4 (BMv2)
+        # O p4c pode gerar um arquivo telemetry.json ou um diretorio
+        # telemetry.json/ contendo o arquivo de mesmo nome. Tenta ambos.
+        json_path = 'telemetry.json'
+        if os.path.isdir(json_path):
+            json_path = os.path.join(json_path, 'telemetry.json')
+
         s1 = self.addSwitch('s1',
             cls=P4Switch,
             sw_path='simple_switch',
-            json_path='telemetry.json',
+            json_path=json_path,
             thrift_port=9090,
             pcap_dump=False,
             log_console=True,

@@ -172,11 +172,13 @@ sudo python3 topo_trabalho3.py
 
 #### Passo 4 — Iniciar o exportador de registradores
 
-Dentro do Mininet, no host `h1` (ou em outro terminal com acesso ao Thrift):
+Em um **terminal fora do Mininet** (host root), execute o exportador. Ele precisa rodar no mesmo namespace do BMv2 e do controlador para acessar a porta Thrift `9090` e enviar UDP para `127.0.0.1:9999`:
 
+```bash
+python3 p4_register_exporter.py --thrift-port 9090 --switch-id 1 --controller 127.0.0.1 --interval 1.0
 ```
-mininet> h1 xterm -e "python3 p4_register_exporter.py --thrift-port 9090 --switch-id 1 --controller 127.0.0.1 --interval 1.0"
-```
+
+> **Importante:** os hosts `h1`, `h2`, `h3` são namespaces de rede isolados. Dentro deles, `127.0.0.1` é o próprio host e a porta Thrift `9090` do BMv2 não é acessível. Por isso, o exportador **não** deve ser executado via `h1 xterm` ou `h1 python3`.
 
 #### Passo 5 — Gerar tráfego normal/ataque/recuperação
 
