@@ -253,15 +253,8 @@ def evaluate_policy(switch_id: int, metrics: dict) -> dict:
         state["consecutive_above"] += 1
         state["consecutive_below"] = 0
     else:
-        # Enquanto bloqueado, uma taxa 0 significa que o trafego do IP
-        # atacante esta sendo dropado no ingress antes de incrementar os
-        # contadores. Essas amostras nao indicam retorno ao normal, portanto
-        # nao devem contar para o desbloqueio.
-        if state["blocked"] and pkts_per_sec == 0:
-            log.debug("SW%d taxa=0 durante bloqueio; ignorando para desbloqueio", switch_id)
-        else:
-            state["consecutive_below"] += 1
-            state["consecutive_above"] = 0
+        state["consecutive_below"] += 1
+        state["consecutive_above"] = 0
 
     # Bloqueia
     if not state["blocked"] and state["consecutive_above"] >= SAMPLES_TO_BLOCK:
