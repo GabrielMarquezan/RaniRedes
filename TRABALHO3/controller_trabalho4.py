@@ -191,8 +191,10 @@ def install_drop_rule(src_ip_int: int, thrift_port: int = SWITCH_THRIFT_PORT) ->
     Usa notação IPv4 (ex: 10.0.0.1), compatível com simple_switch_CLI.
     """
     src_ip_str = ip_int_to_str(src_ip_int)
+    # Algumas versões do simple_switch_CLI exigem o separador '=>'
+    # mesmo quando a ação não possui parâmetros.
     cmd = (
-        f"echo 'table_add MyIngress.drop_table MyIngress.drop {src_ip_str}' "
+        f"echo 'table_add MyIngress.drop_table MyIngress.drop {src_ip_str} =>' "
         f"| simple_switch_CLI --thrift-port {thrift_port}"
     )
     log.info("Instalando regra drop para IP %s na porta Thrift %d", src_ip_str, thrift_port)
