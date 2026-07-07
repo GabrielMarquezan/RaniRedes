@@ -290,7 +290,7 @@ control MyEgress(inout headers hdr,
            a primitiva clone3 / recirculate, que é específica de v1model.
            Para o Trabalho 3, a estratégia mais simples é:
              1. O plano de dados incrementa registradores (feito no Ingress).
-             2. Um script Python de controle (controller_trabalho3.py) lê os
+              2. Um script Python de controle (controller_trabalho4.py) lê os
                 registradores via Thrift e monta/envia o pacote UDP.
            Esta seção está pronta para ser expandida se o grupo quiser
            implementar a geração no próprio plano de dados via clone.

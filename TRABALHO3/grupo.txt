@@ -1,7 +1,5 @@
-Grupo: NN
 Integrantes:
-  - Nome Completo 1  (matrícula)
-  - Nome Completo 2  (matrícula)
-  - Nome Completo 3  (matrícula)
+  - Gabriel Marquezan
+  - Guilherme Moreira
 Disciplina: Redes de Computadores
-Trabalho: 4 — Controlador P4 com Decisão Automática de Tráfego
+Trabalho: 4 - Controlador P4 com Decisão Automática de Tráfego

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-topo_trabalho3.py — Script Mininet para o Trabalho 3
+topo_trabalho4.py — Script Mininet para o Trabalho 4
 Cria a topologia: h1, h2, h3 conectados a s1 (BMv2 Simple Switch com P4).
 
 Uso (como root ou com sudo):
-    sudo python3 topo_trabalho3.py
+    sudo python3 topo_trabalho4.py
 
 Requisitos:
     * p4lang/behavioral-model (simple_switch) instalado

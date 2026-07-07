@@ -368,38 +368,6 @@ def api_metrics():
         })
 
 
-@app.route("/api/history/<int:switch_id>")
-def api_history(switch_id: int):
-    """Retorna o histórico de amostras de um switch específico."""
-    with data_lock:
-        return jsonify({
-            "switch_id": switch_id,
-            "samples":   list(history.get(switch_id, [])),
-        })
-
-
-@app.route("/api/status")
-def api_status():
-    """Health-check: retorna estado do receptor UDP e switches conhecidos."""
-    with data_lock:
-        return jsonify({
-            "udp_host": TELEMETRY_HOST,
-            "udp_port": TELEMETRY_PORT,
-            "switches": {
-                sid: {
-                    "metrics": m,
-                    "policy": {
-                        "pkts_per_sec": rate_state.get(sid, {}).get("pkts_per_sec", 0.0),
-                        "blocked": decision_state[sid]["blocked"],
-                        "limit": LIMIT_PKTS_PER_SEC,
-                    },
-                }
-                for sid, m in latest_metrics.items()
-            },
-            "switch_count": len(latest_metrics),
-        })
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Evento SocketIO: cliente solicita estado atual ao conectar
 # ─────────────────────────────────────────────────────────────────────────────

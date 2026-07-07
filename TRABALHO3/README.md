@@ -15,13 +15,10 @@ switch mede → controlador decide → regra no switch → efeito no tráfego
 ```
 projeto/
 ├── controller_trabalho4.py    # Backend Flask + SocketIO + decisão automática
-├── telemetry_receiver.py      # Módulo de decodificação standalone (reuso T3)
-├── telemetry_simulator.py     # Simulador de switches P4 (testes sem hardware)
 ├── p4_register_exporter.py    # Exportador: lê registradores BMv2 e envia UDP
 ├── traffic_generator.py       # Gera tráfego normal/ataque/recuperação no h1
 ├── telemetry.p4               # Programa P4_16 com drop_table
-├── topo_trabalho3.py          # Script Mininet (topologia + regras estáticas)
-├── topo_trabalho3.json        # Topologia em JSON (referência)
+├── topo_trabalho4.py          # Script Mininet (topologia + regras estáticas)
 ├── rules.txt                  # Regras estáticas e dinâmicas usadas
 ├── RELATORIO_TRABALHO4.md     # Relatório do Trabalho 4
 ├── requirements.txt
@@ -47,11 +44,11 @@ projeto/
 │  └──────────────┘                      UDP 9999            │
 │         ▲                                  │                │
 │         │  regras via CLI                  ▼                │
-│  simple_switch_CLI                 ┌──────────────────┐     │
-│                                    │ controller_t4.py │     │
-│                                    │  - decodifica    │     │
-│                                    │  - calcula taxas │     │
-│                                    │  - decide drop   │     │
+│  simple_switch_CLI                 ┌──────────────────────┐ │
+│                                    │ controller_trabalho4.py│ │
+│                                    │  - decodifica        │   │
+│                                    │  - calcula taxas     │   │
+│                                    │  - decide drop       │   │
 │                                    └────────┬─────────┘     │
 └─────────────────────────────────────────────┼───────────────┘
                                               │ Socket.IO
@@ -121,33 +118,7 @@ Requisitos de sistema: BMv2 (`simple_switch`, `simple_switch_CLI`), `p4c`, `mini
 
 ---
 
-## Execução
-
-### Modo simulado (sem switch P4 real)
-
-Usado para validar o dashboard e a lógica de decisão sem levantar a topologia Mininet.
-
-**Terminal 1 — Controlador:**
-```bash
-python3 controller_trabalho4.py
-```
-
-**Terminal 2 — Simulador:**
-```bash
-# 1 switch, 1 amostra por segundo
-python3 telemetry_simulator.py
-
-# 3 switches, 500ms de intervalo
-python3 telemetry_simulator.py --switches 3 --interval 0.5
-```
-
-Abrir no browser: http://localhost:5000
-
-> **Nota:** o `telemetry_simulator.py` gera deltas aleatórios de pacotes. Dependendo dos valores, a taxa pode ou não ultrapassar o limiar de 120 pkts/s. Para forçar o disparo da política, use o modo real com `traffic_generator.py` ou ajuste o simulador.
-
----
-
-### Modo real (com Mininet + BMv2)
+## Execução (com Mininet + BMv2)
 
 #### Passo 1 — Compilar o programa P4
 
@@ -167,7 +138,7 @@ Abrir no browser: http://localhost:5000
 #### Passo 3 — Iniciar a topologia Mininet
 
 ```bash
-sudo python3 topo_trabalho3.py
+sudo python3 topo_trabalho4.py
 ```
 
 #### Passo 4 — Iniciar o exportador de registradores
@@ -175,7 +146,7 @@ sudo python3 topo_trabalho3.py
 Em um **terminal fora do Mininet** (host root), execute o exportador. Ele precisa rodar no mesmo namespace do BMv2 e do controlador para acessar a porta Thrift `9090` e enviar UDP para `127.0.0.1:9999`:
 
 ```bash
-python3 p4_register_exporter.py --thrift-port 9090 --switch-id 1 --controller 127.0.0.1 --interval 1.0
+python3 p4_register_exporter.py --thrift-port 9090 --switch-id 1 --controller 127.0.0.1
 ```
 
 > **Importante:** os hosts `h1`, `h2`, `h3` são namespaces de rede isolados. Dentro deles, `127.0.0.1` é o próprio host e a porta Thrift `9090` do BMv2 não é acessível. Por isso, o exportador **não** deve ser executado via `h1 xterm` ou `h1 python3`.
@@ -225,7 +196,8 @@ print('Enviado!')
 
 # Ver logs do controlador em tempo real
 # (redirecione a saída para um arquivo, se desejado)
-tail -f /tmp/controller_t4.log
+# python3 controller_trabalho4.py > /tmp/controller_t4.log 2>&1
+# tail -f /tmp/controller_t4.log
 ```
 
 ---

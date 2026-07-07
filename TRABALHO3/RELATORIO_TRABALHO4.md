@@ -33,11 +33,11 @@ Quando a taxa de pacotes provenientes do host `h1` (IP `10.0.0.1`) ultrapassa um
 │  └──────────────┘                      UDP 9999             │
 │         ▲                                  │                │
 │         │  regras via CLI                  ▼                │
-│  simple_switch_CLI                 ┌──────────────────┐     │
-│                                    │ controller_t4.py │     │
-│                                    │  - decodifica    │     │
-│                                    │  - calcula taxas │     │
-│                                    │  - decide drop   │     │
+│  simple_switch_CLI                 ┌──────────────────────┐ │
+│                                    │ controller_trabalho4.py│ │
+│                                    │  - decodifica        │   │
+│                                    │  - calcula taxas     │   │
+│                                    │  - decide drop       │   │
 │                                    └────────┬─────────┘     │
 └─────────────────────────────────────────────┼───────────────┘
                                               │ Socket.IO
@@ -137,7 +137,7 @@ Acesse o dashboard em: http://localhost:5000
 ### 7.3 Execução da topologia Mininet
 
 ```bash
-sudo python3 topo_trabalho3.py
+sudo python3 topo_trabalho4.py
 ```
 
 ### 7.4 Início do exportador de registradores
