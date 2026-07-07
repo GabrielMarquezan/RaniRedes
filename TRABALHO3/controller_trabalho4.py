@@ -180,15 +180,22 @@ def calculate_rate(switch_id: int, packet_count: int) -> float:
     return pkts_per_sec
 
 
+def ip_int_to_str(ip_int: int) -> str:
+    """Converte um IP de 32 bits (int) para notação a.b.c.d."""
+    return ".".join(str((ip_int >> (8 * i)) & 0xFF) for i in (3, 2, 1, 0))
+
+
 def install_drop_rule(src_ip_int: int, thrift_port: int = SWITCH_THRIFT_PORT) -> int | None:
     """
     Adiciona entrada na drop_table. Retorna o handle da regra ou None.
+    Usa notação IPv4 (ex: 10.0.0.1), compatível com simple_switch_CLI.
     """
+    src_ip_str = ip_int_to_str(src_ip_int)
     cmd = (
-        f"echo 'table_add MyIngress.drop_table MyIngress.drop {src_ip_int}' "
+        f"echo 'table_add MyIngress.drop_table MyIngress.drop {src_ip_str}' "
         f"| simple_switch_CLI --thrift-port {thrift_port}"
     )
-    log.info("Instalando regra drop para IP 0x%08X na porta Thrift %d", src_ip_int, thrift_port)
+    log.info("Instalando regra drop para IP %s na porta Thrift %d", src_ip_str, thrift_port)
     try:
         out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, timeout=5)
         decoded = out.decode()
@@ -234,6 +241,12 @@ def evaluate_policy(switch_id: int, metrics: dict) -> dict:
 
     action_taken = None
 
+    log.info(
+        "SW%d política | pkts/s=%.1f | limiar=%d | above=%d | below=%d | blocked=%s",
+        switch_id, pkts_per_sec, LIMIT_PKTS_PER_SEC,
+        state["consecutive_above"], state["consecutive_below"], state["blocked"]
+    )
+
     if pkts_per_sec > LIMIT_PKTS_PER_SEC:
         state["consecutive_above"] += 1
         state["consecutive_below"] = 0
@@ -243,13 +256,17 @@ def evaluate_policy(switch_id: int, metrics: dict) -> dict:
         # contadores. Essas amostras nao indicam retorno ao normal, portanto
         # nao devem contar para o desbloqueio.
         if state["blocked"] and pkts_per_sec == 0:
-            pass
+            log.debug("SW%d taxa=0 durante bloqueio; ignorando para desbloqueio", switch_id)
         else:
             state["consecutive_below"] += 1
             state["consecutive_above"] = 0
 
     # Bloqueia
     if not state["blocked"] and state["consecutive_above"] >= SAMPLES_TO_BLOCK:
+        log.warning(
+            "SW%d limiar ultrapassado por %d amostras; tentando bloquear %s",
+            switch_id, state["consecutive_above"], BLOCKED_SRC_IP
+        )
         handle = install_drop_rule(BLOCKED_SRC_IP_INT, SWITCH_THRIFT_PORT)
         if handle is not None:
             state["blocked"] = True
@@ -259,9 +276,15 @@ def evaluate_policy(switch_id: int, metrics: dict) -> dict:
                 "SW%d BLOQUEADO: pkts/s=%.1f > limiar=%d",
                 switch_id, pkts_per_sec, LIMIT_PKTS_PER_SEC
             )
+        else:
+            log.error("SW%d falha ao instalar regra de bloqueio", switch_id)
 
     # Desbloqueia
     elif state["blocked"] and state["consecutive_below"] >= SAMPLES_TO_UNBLOCK:
+        log.info(
+            "SW%d tráfego normal por %d amostras; tentando desbloquear",
+            switch_id, state["consecutive_below"]
+        )
         if state["handle"] is not None and remove_drop_rule(state["handle"], SWITCH_THRIFT_PORT):
             state["blocked"] = False
             state["handle"] = None
