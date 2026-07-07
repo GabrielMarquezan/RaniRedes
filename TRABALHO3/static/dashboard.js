@@ -340,17 +340,37 @@ function processPolicy(switchId, policy) {
 // Socket.IO
 // ─────────────────────────────────────────────────────────────────────────────
 
-const socket = io();
+const socket = io({
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+});
+
+function setConnectionStatus(text, isError = false) {
+  const badge = document.getElementById('status-badge');
+  const statusText = document.getElementById('status-text');
+  statusText.textContent = text;
+  badge.classList.remove('active');
+  if (isError) {
+    badge.classList.add('error');
+  } else {
+    badge.classList.remove('error');
+  }
+}
 
 socket.on('connect', () => {
+  setConnectionStatus('Conectado');
   console.log('[Socket.IO] Conectado ao servidor');
 });
 
-socket.on('disconnect', () => {
-  const badge = document.getElementById('status-badge');
-  badge.classList.remove('active');
-  document.getElementById('status-text').textContent = 'Desconectado';
-  console.warn('[Socket.IO] Desconectado');
+socket.on('disconnect', (reason) => {
+  setConnectionStatus(`Desconectado (${reason})`, true);
+  console.warn('[Socket.IO] Desconectado:', reason);
+});
+
+socket.on('connect_error', (err) => {
+  setConnectionStatus('Erro de conexão', true);
+  console.error('[Socket.IO] Erro de conexão:', err.message);
 });
 
 /** Estado inicial: servidor envia snapshot de todos os switches conhecidos */

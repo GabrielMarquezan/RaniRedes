@@ -13,6 +13,7 @@ Ciclo de controle:
     switch mede → controlador decide → regra no switch → efeito no tráfego
 """
 
+import argparse
 import struct
 import socket
 import subprocess
@@ -317,6 +318,7 @@ def udp_receiver():
                 history[sid].append(metrics)
 
             # Envia evento para todos os clientes conectados ao dashboard
+            # Fora de um handler de request, emit() envia para todos por padrao.
             socketio.emit("telemetry_update", {
                 "switch_id": sid,
                 "metrics":   metrics,
@@ -358,6 +360,28 @@ def api_history(switch_id: int):
         })
 
 
+@app.route("/api/status")
+def api_status():
+    """Health-check: retorna estado do receptor UDP e switches conhecidos."""
+    with data_lock:
+        return jsonify({
+            "udp_host": TELEMETRY_HOST,
+            "udp_port": TELEMETRY_PORT,
+            "switches": {
+                sid: {
+                    "metrics": m,
+                    "policy": {
+                        "pkts_per_sec": rate_state.get(sid, {}).get("pkts_per_sec", 0.0),
+                        "blocked": decision_state[sid]["blocked"],
+                        "limit": LIMIT_PKTS_PER_SEC,
+                    },
+                }
+                for sid, m in latest_metrics.items()
+            },
+            "switch_count": len(latest_metrics),
+        })
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Evento SocketIO: cliente solicita estado atual ao conectar
 # ─────────────────────────────────────────────────────────────────────────────
@@ -387,9 +411,32 @@ def on_connect():
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Controlador de telemetria P4 com decisão automática")
+    parser.add_argument("--udp-port",  type=int, default=TELEMETRY_PORT, help="Porta UDP de telemetria")
+    parser.add_argument("--http-port", type=int, default=5000,           help="Porta HTTP do dashboard")
+    parser.add_argument("--debug",     action="store_true",             help="Habilita logs de debug")
+    args = parser.parse_args()
+
+    if args.debug:
+        log.setLevel(logging.DEBUG)
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    # Permite sobrescrever a porta UDP via CLI
+    TELEMETRY_PORT = args.udp_port
+
     # Inicia receptor UDP em thread daemon (encerra junto com o processo)
     recv_thread = threading.Thread(target=udp_receiver, daemon=True)
     recv_thread.start()
 
-    log.info("Dashboard disponível em http://0.0.0.0:5000")
-    socketio.run(app, host="0.0.0.0", port=5000, debug=False, allow_unsafe_werkzeug=True)
+    # Pequena pausa para garantir que o socket UDP esteja vinculado antes do HTTP subir
+    time.sleep(0.2)
+
+    log.info("Dashboard disponível em http://0.0.0.0:%d", args.http_port)
+    log.info("Receptor UDP escutando em %s:%d", TELEMETRY_HOST, TELEMETRY_PORT)
+
+    # allow_unsafe_werkzeug só existe em versões mais antigas do Flask-SocketIO
+    run_kwargs = {"host": "0.0.0.0", "port": args.http_port, "debug": False}
+    try:
+        socketio.run(app, **run_kwargs, allow_unsafe_werkzeug=True)
+    except TypeError:
+        socketio.run(app, **run_kwargs)

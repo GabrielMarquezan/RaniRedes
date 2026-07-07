@@ -136,6 +136,11 @@ h1 {
   color: var(--cyan);
 }
 
+.status-badge.error {
+  border-color: var(--red);
+  color: var(--red);
+}
+
 .status-dot {
   width: 7px;
   height: 7px;
@@ -148,6 +153,11 @@ h1 {
   background: var(--cyan);
   box-shadow: 0 0 8px var(--cyan);
   animation: blink-dot 1.2s ease-in-out infinite;
+}
+
+.status-badge.error .status-dot {
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red);
 }
 
 @keyframes blink-dot {
