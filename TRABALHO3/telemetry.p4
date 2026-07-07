@@ -223,6 +223,19 @@ control MyIngress(inout headers hdr,
         mark_to_drop(standard_metadata);
     }
 
+    /* ── Tabela de bloqueio populada pelo controlador ───────────────────── */
+    table drop_table {
+        key = {
+            hdr.ipv4.srcAddr: exact;
+        }
+        actions = {
+            drop;
+            NoAction;
+        }
+        size = 1024; // Tamanho máximo de IPs bloqueados simultaneamente
+        default_action = NoAction(); // Se o IP não estiver na tabela, permite passar
+    }
+
     /* ── Tabela de encaminhamento IPv4 ──────────────────────────────────── */
     table ipv4_lpm {
         key = {
@@ -238,13 +251,27 @@ control MyIngress(inout headers hdr,
     }
 
     apply {
-        meta.send_telemetry = 0;
-
+        // Verifica se é um pacote IPv4 válido
         if (hdr.ipv4.isValid()) {
-            if (hdr.ipv4.ttl == 0) {
-                drop();
-            } else {
-                ipv4_lpm.apply();
+            
+            // 1. Aplica a tabela de bloqueio e analisa a ação que foi executada
+            switch (drop_table.apply().action_run) {
+                
+                drop: {
+                    // Se a ação tomada foi 'drop', o pacote já foi marcado para descarte.
+                    // Não fazemos mais nada! Não roteia e não conta telemetria.
+                }
+                
+                default: {
+                    // Se não for 'drop' (ou seja, foi NoAction), o fluxo segue normalmente.
+                    
+                    // 2. Aplica a tabela de roteamento (ajuste para o nome da sua tabela atual)
+                    ipv4_lpm.apply();
+                    
+                    // 3. Insira aqui a lógica de exportação e os Registers
+                    // do seu Trabalho 3 (telemetria de pacotes, bytes, etc.)
+                    // ...
+                }
             }
         }
     }

@@ -302,6 +302,41 @@ function processMetrics(switchId, metrics) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Decisões do controlador
+// ─────────────────────────────────────────────────────────────────────────────
+
+function processPolicy(switchId, policy) {
+  if (!policy) return;
+
+  const section = document.getElementById('policy-section');
+  section.classList.remove('hidden');
+
+  document.getElementById('policy-limit').textContent = policy.limit;
+  document.getElementById('policy-rate').textContent = policy.pkts_per_sec;
+
+  const statusEl = document.getElementById('policy-status');
+  const blockedList = document.getElementById('blocked-list');
+  const logList = document.getElementById('action-log-list');
+
+  if (policy.blocked) {
+    statusEl.textContent = 'Bloqueado';
+    statusEl.className = 'status-blocked';
+    blockedList.innerHTML = `<li>10.0.0.1 (SW${switchId})</li>`;
+  } else {
+    statusEl.textContent = 'Normal';
+    statusEl.className = 'status-normal';
+    blockedList.innerHTML = '<li class="empty">Nenhum IP bloqueado</li>';
+  }
+
+  if (policy.action) {
+    const actionText = policy.action === 'block' ? 'BLOQUEIO' : 'DESBLOQUEIO';
+    const li = document.createElement('li');
+    li.textContent = `[${new Date().toLocaleTimeString()}] ${actionText} em SW${switchId} @ ${policy.pkts_per_sec} pkts/s`;
+    logList.prepend(li);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Socket.IO
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -328,6 +363,9 @@ socket.on('initial_state', (snapshot) => {
     } else if (data.metrics) {
       processMetrics(sid, data.metrics);
     }
+    if (data.policy) {
+      processPolicy(sid, data.policy);
+    }
   });
 });
 
@@ -335,6 +373,7 @@ socket.on('initial_state', (snapshot) => {
 socket.on('telemetry_update', (payload) => {
   console.debug('[Telemetry]', payload);
   processMetrics(payload.switch_id, payload.metrics);
+  processPolicy(payload.switch_id, payload.policy);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

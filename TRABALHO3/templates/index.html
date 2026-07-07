@@ -23,7 +23,7 @@
         <span class="logo-icon">◈</span>
         <div>
           <h1>P4 Telemetry Dashboard</h1>
-          <p class="subtitle">Trabalho 3 — Monitoramento de Switches em Tempo Real</p>
+          <p class="subtitle">Trabalho 4 — Controlador com Decisão Automática</p>
         </div>
       </div>
       <div class="header-right">
@@ -76,6 +76,42 @@
             <!-- preenchido por dashboard.js -->
           </tbody>
         </table>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────────────────────── -->
+    <!-- Decisões do Controlador                                             -->
+    <!-- ─────────────────────────────────────────────────────────────────── -->
+    <section id="policy-section" class="card hidden">
+      <div class="card-header">
+        <h2>▸ Decisões do Controlador</h2>
+        <span class="card-hint">Ações automáticas baseadas em pacotes/s</span>
+      </div>
+      <div class="policy-grid">
+        <div class="policy-metric">
+          <span class="label">Limiar</span>
+          <span class="value" id="policy-limit">—</span>
+          <span class="unit">pkts/s</span>
+        </div>
+        <div class="policy-metric">
+          <span class="label">Taxa Atual</span>
+          <span class="value" id="policy-rate">—</span>
+          <span class="unit">pkts/s</span>
+        </div>
+        <div class="policy-metric">
+          <span class="label">Status</span>
+          <span class="value" id="policy-status">Normal</span>
+        </div>
+      </div>
+      <div class="blocked-ips">
+        <h3>IPs Bloqueados</h3>
+        <ul id="blocked-list">
+          <li class="empty">Nenhum IP bloqueado</li>
+        </ul>
+      </div>
+      <div class="action-log">
+        <h3>Log de Ações</h3>
+        <ul id="action-log-list"></ul>
       </div>
     </section>
 

@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """
-Trabalho 3 — Controlador de Telemetria P4
+Trabalho 4 — Controlador de Telemetria P4 com Decisão Automática
 Disciplina: Redes de Computadores
-Descrição: Recebe mensagens UDP de telemetria exportadas por switches P4,
-           decodifica os campos, mantém histórico e exibe em tempo real
-           via Flask + Flask-SocketIO.
+
+Descrição:
+    Recebe mensagens UDP de telemetria exportadas por switches P4/BMv2,
+    decodifica os campos, calcula taxas de pacotes/s e toma decisões
+    automáticas: instala ou remove regras na drop_table do switch via
+    simple_switch_CLI. Exibe tudo em tempo real via Flask + Flask-SocketIO.
+
+Ciclo de controle:
+    switch mede → controlador decide → regra no switch → efeito no tráfego
 """
 
 import struct
 import socket
+import subprocess
 import threading
 import time
-import json
 import logging
 from datetime import datetime
 from collections import defaultdict, deque
@@ -45,25 +51,32 @@ MAX_HISTORY = 60
 #   icmp_count   : uint32  (4 bytes)
 #   min_ttl      : uint8   (1 byte)
 #
-# Total: 25 bytes  →  struct format "!IQQIb"
-# Nota: ajuste aqui se o seu programa P4 exportar campos em ordem/tamanho
-#       diferentes. Consulte seu header de telemetria no arquivo .p4.
+# Total: 25 bytes  →  struct format "!IQQIB"
 # ─────────────────────────────────────────────────────────────────────────────
 
-TELEMETRY_FORMAT = "!IQQI B"  # big-endian: uint32, uint64, uint64, uint32, uint8
 TELEMETRY_FORMAT = "!IQQIB"
 TELEMETRY_SIZE   = struct.calcsize(TELEMETRY_FORMAT)  # 25 bytes
 
-# Configurações da Política de Mitigação
-LIMIT_BYTES_PER_SEC = 50000  # Exemplo: 50 KB/s
-LIMIT_PKTS_PER_SEC = 100     # Exemplo: 100 pacotes/s
+# ─────────────────────────────────────────────────────────────────────────────
+# Configurações da política de mitigação
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Dicionário de estado: { '10.0.0.1': {'last_time': 0, 'last_bytes': 0, 'last_pkts': 0, 'blocked': False} }
-host_stats = {}
+# Taxa que caracteriza ataque (pacotes por segundo)
+LIMIT_PKTS_PER_SEC = 120
 
+# IP que será bloqueado quando a taxa for ultrapassada
+BLOCKED_SRC_IP = "10.0.0.1"
+BLOCKED_SRC_IP_INT = 0x0A000001  # representação numérica para a tabela P4
+
+# Histerese: amostras consecutivas acima/abaixo do limiar
+SAMPLES_TO_BLOCK = 2
+SAMPLES_TO_UNBLOCK = 5
+
+# Porta Thrift do switch BMv2
+SWITCH_THRIFT_PORT = 9090
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Estado global — armazena métricas por switch_id
+# Estado global
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Última leitura de cada switch: { switch_id -> dict }
@@ -71,6 +84,20 @@ latest_metrics: dict = {}
 
 # Histórico temporal: { switch_id -> deque([{timestamp, ...}, ...]) }
 history: dict = defaultdict(lambda: deque(maxlen=MAX_HISTORY))
+
+# Estado por switch para cálculo de taxa
+# { switch_id -> {"last_packet_count": int, "last_time": float, "pkts_per_sec": float} }
+rate_state: dict = {}
+
+# Estado da decisão
+# { switch_id -> {"consecutive_above": int, "consecutive_below": int,
+#                 "blocked": bool, "handle": int|None} }
+decision_state: dict = defaultdict(lambda: {
+    "consecutive_above": 0,
+    "consecutive_below": 0,
+    "blocked": False,
+    "handle": None,
+})
 
 # Lock para acesso thread-safe às estruturas acima
 data_lock = threading.Lock()
@@ -80,7 +107,7 @@ data_lock = threading.Lock()
 # ─────────────────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "telemetria-p4-t3"
+app.config["SECRET_KEY"] = "telemetria-p4-t4"
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 
@@ -91,16 +118,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 def decode_telemetry(raw: bytes) -> dict | None:
     """
     Decodifica um pacote UDP de telemetria recebido do switch P4.
-
     Espera exatamente TELEMETRY_SIZE bytes no formato TELEMETRY_FORMAT.
-    Retorna um dicionário com os campos decodificados ou None em caso de erro.
-
-    Adaptação para INT (In-band Network Telemetry):
-        Se a telemetria vier embutida em pacotes clonados, será necessário
-        receber o pacote Ethernet/IP completo (via socket AF_PACKET ou
-        scapy) e extrair o payload INT antes de chamar struct.unpack.
-        Substitua a linha raw[:TELEMETRY_SIZE] pelo slice correto do
-        payload INT após remover os cabeçalhos Ethernet, IP e UDP.
     """
     if len(raw) < TELEMETRY_SIZE:
         log.warning(
@@ -113,12 +131,12 @@ def decode_telemetry(raw: bytes) -> dict | None:
             TELEMETRY_FORMAT, raw[:TELEMETRY_SIZE]
         )
         return {
-            "switch_id":    switch_id,
-            "packet_count": packet_count,
-            "byte_count":   byte_count,
-            "icmp_count":   icmp_count,
-            "min_ttl":      min_ttl & 0xFF,  # garante unsigned
-            "timestamp":    datetime.now().strftime("%H:%M:%S"),
+            "switch_id":      switch_id,
+            "packet_count":   packet_count,
+            "byte_count":     byte_count,
+            "icmp_count":     icmp_count,
+            "min_ttl":        min_ttl & 0xFF,
+            "timestamp":      datetime.now().strftime("%H:%M:%S"),
             "timestamp_full": datetime.now().isoformat(),
         }
     except struct.error as exc:
@@ -127,14 +145,141 @@ def decode_telemetry(raw: bytes) -> dict | None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Política de decisão automática
+# ─────────────────────────────────────────────────────────────────────────────
+
+def calculate_rate(switch_id: int, packet_count: int) -> float:
+    """
+    Calcula a taxa de pacotes/s para um switch a partir do contador acumulado.
+    Na primeira amostra retorna 0.0 e apenas inicializa o estado.
+    """
+    now = time.time()
+
+    if switch_id not in rate_state:
+        rate_state[switch_id] = {
+            "last_packet_count": packet_count,
+            "last_time": now,
+            "pkts_per_sec": 0.0,
+        }
+        return 0.0
+
+    state = rate_state[switch_id]
+    delta_pkts = packet_count - state["last_packet_count"]
+    delta_time = now - state["last_time"]
+
+    if delta_time > 0:
+        pkts_per_sec = delta_pkts / delta_time
+    else:
+        pkts_per_sec = 0.0
+
+    state["last_packet_count"] = packet_count
+    state["last_time"] = now
+    state["pkts_per_sec"] = pkts_per_sec
+
+    return pkts_per_sec
+
+
+def install_drop_rule(src_ip_int: int, thrift_port: int = SWITCH_THRIFT_PORT) -> int | None:
+    """
+    Adiciona entrada na drop_table. Retorna o handle da regra ou None.
+    """
+    cmd = (
+        f"echo 'table_add MyIngress.drop_table MyIngress.drop {src_ip_int}' "
+        f"| simple_switch_CLI --thrift-port {thrift_port}"
+    )
+    log.info("Instalando regra drop para IP 0x%08X na porta Thrift %d", src_ip_int, thrift_port)
+    try:
+        out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, timeout=5)
+        decoded = out.decode()
+        log.info("Saída CLI: %s", decoded.strip())
+        # Exemplo de saída: "Entry has been added with handle 5"
+        for line in decoded.splitlines():
+            if "handle" in line.lower():
+                parts = line.split()
+                return int(parts[-1].rstrip("."))
+    except subprocess.CalledProcessError as exc:
+        log.error("Falha ao instalar regra: %s", exc.output.decode(errors="ignore"))
+    except Exception as exc:
+        log.error("Erro inesperado ao instalar regra: %s", exc)
+    return None
+
+
+def remove_drop_rule(handle: int, thrift_port: int = SWITCH_THRIFT_PORT) -> bool:
+    """
+    Remove entrada da drop_table pelo handle.
+    """
+    cmd = (
+        f"echo 'table_delete MyIngress.drop_table {handle}' "
+        f"| simple_switch_CLI --thrift-port {thrift_port}"
+    )
+    log.info("Removendo regra drop (handle %d) da porta Thrift %d", handle, thrift_port)
+    try:
+        subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, timeout=5)
+        return True
+    except subprocess.CalledProcessError as exc:
+        log.error("Falha ao remover regra: %s", exc.output.decode(errors="ignore"))
+    except Exception as exc:
+        log.error("Erro inesperado ao remover regra: %s", exc)
+    return False
+
+
+def evaluate_policy(switch_id: int, metrics: dict) -> dict:
+    """
+    Avalia a política de mitigação para um switch a partir das métricas recebidas.
+    Retorna dict com a ação tomada (ou None), taxa e status de bloqueio.
+    """
+    pkts_per_sec = calculate_rate(switch_id, metrics["packet_count"])
+    state = decision_state[switch_id]
+
+    action_taken = None
+
+    if pkts_per_sec > LIMIT_PKTS_PER_SEC:
+        state["consecutive_above"] += 1
+        state["consecutive_below"] = 0
+    else:
+        state["consecutive_below"] += 1
+        state["consecutive_above"] = 0
+
+    # Bloqueia
+    if not state["blocked"] and state["consecutive_above"] >= SAMPLES_TO_BLOCK:
+        handle = install_drop_rule(BLOCKED_SRC_IP_INT, SWITCH_THRIFT_PORT)
+        if handle is not None:
+            state["blocked"] = True
+            state["handle"] = handle
+            action_taken = "block"
+            log.warning(
+                "SW%d BLOQUEADO: pkts/s=%.1f > limiar=%d",
+                switch_id, pkts_per_sec, LIMIT_PKTS_PER_SEC
+            )
+
+    # Desbloqueia
+    elif state["blocked"] and state["consecutive_below"] >= SAMPLES_TO_UNBLOCK:
+        if state["handle"] is not None and remove_drop_rule(state["handle"], SWITCH_THRIFT_PORT):
+            state["blocked"] = False
+            state["handle"] = None
+            action_taken = "unblock"
+            log.info(
+                "SW%d DESBLOQUEADO: pkts/s=%.1f voltou ao normal",
+                switch_id, pkts_per_sec
+            )
+
+    return {
+        "switch_id": switch_id,
+        "pkts_per_sec": round(pkts_per_sec, 2),
+        "blocked": state["blocked"],
+        "action": action_taken,
+        "limit": LIMIT_PKTS_PER_SEC,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Receptor UDP (roda em thread separada)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def udp_receiver():
     """
-    Escuta na porta UDP TELEMETRY_PORT, decodifica cada datagrama recebido
-    e atualiza as estruturas de estado global.  Notifica o frontend via
-    SocketIO após cada atualização.
+    Escuta na porta UDP TELEMETRY_PORT, decodifica cada datagrama recebido,
+    atualiza as estruturas de estado global e executa a política de decisão.
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -157,6 +302,9 @@ def udp_receiver():
                 metrics["icmp_count"], metrics["min_ttl"],
             )
 
+            # Lógica de controle automático
+            action_result = evaluate_policy(sid, metrics)
+
             with data_lock:
                 latest_metrics[sid] = metrics
                 history[sid].append(metrics)
@@ -166,6 +314,7 @@ def udp_receiver():
                 "switch_id": sid,
                 "metrics":   metrics,
                 "history":   list(history[sid]),
+                "policy":    action_result,
             })
 
         except Exception as exc:
@@ -214,6 +363,12 @@ def on_connect():
             sid: {
                 "metrics": m,
                 "history": list(history[sid]),
+                "policy": {
+                    "switch_id": sid,
+                    "pkts_per_sec": rate_state.get(sid, {}).get("pkts_per_sec", 0.0),
+                    "blocked": decision_state[sid]["blocked"],
+                    "limit": LIMIT_PKTS_PER_SEC,
+                },
             }
             for sid, m in latest_metrics.items()
         }

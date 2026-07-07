@@ -1,0 +1,25 @@
+Regras usadas no Trabalho 4 — Controlador P4 com Decisão Automática
+====================================================================
+
+Regras estáticas (instaladas por topo_trabalho3.py ao iniciar a topologia):
+
+  table_add MyIngress.ipv4_lpm MyIngress.forward 10.0.0.1/32 => 1
+  table_add MyIngress.ipv4_lpm MyIngress.forward 10.0.0.2/32 => 2
+  table_add MyIngress.ipv4_lpm MyIngress.forward 10.0.0.3/32 => 3
+
+Regras dinâmicas (instaladas/removidas automaticamente por controller_trabalho4.py):
+
+  # Bloqueia pacotes originados de 10.0.0.1 quando a taxa de pkts/s ultrapassa
+  # o limiar configurado (LIMIT_PKTS_PER_SEC) por SAMPLES_TO_BLOCK amostras.
+  table_add MyIngress.drop_table MyIngress.drop 0x0A000001 =>
+
+  # Remoção é feita pelo handle retornado na instalação:
+  # table_delete MyIngress.drop_table <handle>
+
+Observações:
+- O controlador calcula a taxa de pacotes/s a partir do campo packet_count
+  recebido na telemetria UDP.
+- O IP 0x0A000001 corresponde a 10.0.0.1 (host h1), que é o gerador de
+  tráfego no experimento.
+- O desbloqueio ocorre automaticamente após SAMPLES_TO_UNBLOCK amostras
+  consecutivas abaixo do limiar.

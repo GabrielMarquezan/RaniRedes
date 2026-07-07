@@ -4,4 +4,4 @@ Integrantes:
   - Nome Completo 2  (matrícula)
   - Nome Completo 3  (matrícula)
 Disciplina: Redes de Computadores
-Trabalho: 3 — Controlador de Telemetria P4
+Trabalho: 4 — Controlador P4 com Decisão Automática de Tráfego

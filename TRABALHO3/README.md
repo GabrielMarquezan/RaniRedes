@@ -1,6 +1,12 @@
-# Trabalho 3 — Controlador de Telemetria P4
+# Trabalho 4 — Controlador P4 com Decisão Automática de Tráfego
 
-Dashboard em tempo real para switches P4 (BMv2 + Mininet)
+Evolução do Trabalho 3: o controlador recebe telemetria de switches P4/BMv2, calcula taxas de tráfego e toma decisões automáticas — instalando ou removendo regras no plano de dados para mitigar um fluxo anômalo.
+
+Ciclo demonstrado:
+
+```
+switch mede → controlador decide → regra no switch → efeito no tráfego
+```
 
 ---
 
@@ -8,20 +14,23 @@ Dashboard em tempo real para switches P4 (BMv2 + Mininet)
 
 ```
 projeto/
-├── controller_trabalho3.py    # Backend Flask + SocketIO + receptor UDP
-├── telemetry_receiver.py      # Módulo de decodificação (standalone ou importado)
+├── controller_trabalho4.py    # Backend Flask + SocketIO + decisão automática
+├── telemetry_receiver.py      # Módulo de decodificação standalone (reuso T3)
 ├── telemetry_simulator.py     # Simulador de switches P4 (testes sem hardware)
 ├── p4_register_exporter.py    # Exportador: lê registradores BMv2 e envia UDP
-├── telemetry.p4               # Programa P4_16 (plano de dados)
-├── topo_trabalho3.py          # Script Mininet (topologia + regras)
+├── traffic_generator.py       # Gera tráfego normal/ataque/recuperação no h1
+├── telemetry.p4               # Programa P4_16 com drop_table
+├── topo_trabalho3.py          # Script Mininet (topologia + regras estáticas)
 ├── topo_trabalho3.json        # Topologia em JSON (referência)
+├── rules.txt                  # Regras estáticas e dinâmicas usadas
+├── RELATORIO_TRABALHO4.md     # Relatório do Trabalho 4
 ├── requirements.txt
 ├── grupo.txt
 ├── templates/
 │   └── index.html             # Dashboard HTML
 └── static/
     ├── style.css              # Estilos
-    └── dashboard.js           # Lógica SocketIO + Chart.js
+    └── dashboard.js           # Lógica SocketIO + Chart.js + painel de decisões
 ```
 
 ---
@@ -29,46 +38,42 @@ projeto/
 ## Arquitetura
 
 ```
-┌─────────────────────────────────────────┐
-│            PLANO DE DADOS               │
-│  Mininet ─► BMv2 (telemetry.p4)         │
-│  Registradores: packet_count, byte_count│
-│               icmp_count, min_ttl       │
-└──────────────────┬──────────────────────┘
-                   │ leitura Thrift
-                   ▼
-┌──────────────────────────────────────────┐
-│       p4_register_exporter.py            │
-│  Lê registradores e empacota em UDP      │
-└──────────────────┬───────────────────────┘
-                   │ UDP:9999 (25 bytes)
-                   ▼
-┌──────────────────────────────────────────┐
-│      controller_trabalho3.py             │
-│  - udp_receiver() (thread)               │
-│  - decode_telemetry() → dict             │
-│  - histórico por switch_id               │
-│  - Flask HTTP + SocketIO                 │
-└──────────────────┬───────────────────────┘
-                   │ WebSocket (SocketIO)
-                   ▼
-┌──────────────────────────────────────────┐
-│      Browser — index.html                │
-│  - Tabela de valores atuais              │
-│  - Gráficos de linha (Chart.js)          │
-│  - Tabela de histórico                   │
-└──────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Mininet + BMv2 (s1)                                        │
+│  ┌──────────────┐   Thrift   ┌──────────────────────────┐  │
+│  │ telemetry.p4 │◄───────────│ p4_register_exporter.py  │  │
+│  │  registradores            │  lê regs e envia UDP     │  │
+│  │  drop_table               └──────────┬───────────────┘  │
+│  └──────────────┘                      UDP 9999            │
+│         ▲                                  │                │
+│         │  regras via CLI                  ▼                │
+│  simple_switch_CLI                 ┌──────────────────┐     │
+│                                    │ controller_t4.py │     │
+│                                    │  - decodifica    │     │
+│                                    │  - calcula taxas │     │
+│                                    │  - decide drop   │     │
+│                                    └────────┬─────────┘     │
+└─────────────────────────────────────────────┼───────────────┘
+                                              │ Socket.IO
+                                              ▼
+                                    ┌─────────────────────┐
+                                    │  Browser (dashboard)│
+                                    │  - métricas         │
+                                    │  - taxas            │
+                                    │  - ações/logs       │
+                                    └─────────────────────┘
 ```
 
 ---
 
 ## Fluxo dos dados
 
-1. O switch BMv2 executa `telemetry.p4`, que incrementa registradores a cada pacote encaminhado.
-2. `p4_register_exporter.py` polling via `simple_switch_CLI` (Thrift) e envia UDP ao controlador.
-3. `controller_trabalho3.py` recebe o datagrama UDP, chama `decode_telemetry()` e atualiza o estado.
-4. O estado é emitido via SocketIO para todos os browsers conectados.
-5. `dashboard.js` recebe o evento e atualiza tabela, gráficos e histórico sem recarregar a página.
+1. O switch BMv2 executa `telemetry.p4`, que incrementa registradores e consulta a `drop_table` antes do roteamento.
+2. `p4_register_exporter.py` faz polling dos registradores via `simple_switch_CLI` (Thrift) e envia UDP ao controlador.
+3. `controller_trabalho4.py` recebe o datagrama UDP, calcula `pkts/s` e avalia a política de bloqueio.
+4. Se a taxa ultrapassar o limiar por 2 amostras consecutivas, o controlador instala uma regra `drop` para `10.0.0.1`.
+5. Se a taxa ficar abaixo do limiar por 5 amostras consecutivas, a regra é removida.
+6. O estado e as decisões são emitidos via SocketIO para o dashboard.
 
 ---
 
@@ -82,7 +87,21 @@ projeto/
 | icmp_count    | uint32  | 4 bytes | big-endian |
 | min_ttl       | uint8   | 1 byte  | —          |
 
-Struct Python: `"!IQQIb"` (25 bytes total)
+Struct Python: `"!IQQIB"` (25 bytes total)
+
+---
+
+## Política de decisão
+
+Configurada em `controller_trabalho4.py`:
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `LIMIT_PKTS_PER_SEC` | `120` | Taxa que caracteriza ataque |
+| `BLOCKED_SRC_IP` | `10.0.0.1` | IP bloqueado quando a taxa é ultrapassada |
+| `SAMPLES_TO_BLOCK` | `2` | Amostras consecutivas acima do limiar para bloquear |
+| `SAMPLES_TO_UNBLOCK` | `5` | Amostras consecutivas abaixo do limiar para desbloquear |
+| `SWITCH_THRIFT_PORT` | `9090` | Porta Thrift do BMv2 |
 
 ---
 
@@ -98,20 +117,24 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Requisitos de sistema: BMv2 (`simple_switch`, `simple_switch_CLI`), `p4c`, `mininet`.
+
 ---
 
 ## Execução
 
 ### Modo simulado (sem switch P4 real)
 
-Terminal 1 — Controlador:
+Usado para validar o dashboard e a lógica de decisão sem levantar a topologia Mininet.
+
+**Terminal 1 — Controlador:**
 ```bash
-python3 controller_trabalho3.py
+python3 controller_trabalho4.py
 ```
 
-Terminal 2 — Simulador:
+**Terminal 2 — Simulador:**
 ```bash
-# 1 switch, 1 pacote por segundo
+# 1 switch, 1 amostra por segundo
 python3 telemetry_simulator.py
 
 # 3 switches, 500ms de intervalo
@@ -119,6 +142,8 @@ python3 telemetry_simulator.py --switches 3 --interval 0.5
 ```
 
 Abrir no browser: http://localhost:5000
+
+> **Nota:** o `telemetry_simulator.py` gera deltas aleatórios de pacotes. Dependendo dos valores, a taxa pode ou não ultrapassar o limiar de 120 pkts/s. Para forçar o disparo da política, use o modo real com `traffic_generator.py` ou ajuste o simulador.
 
 ---
 
@@ -134,8 +159,10 @@ p4c --target bmv2 --arch v1model telemetry.p4 -o telemetry.json
 
 ```bash
 # Em um terminal fora do Mininet
-python3 controller_trabalho3.py
+python3 controller_trabalho4.py
 ```
+
+Abrir no browser: http://localhost:5000
 
 #### Passo 3 — Iniciar a topologia Mininet
 
@@ -145,56 +172,32 @@ sudo python3 topo_trabalho3.py
 
 #### Passo 4 — Iniciar o exportador de registradores
 
-Em outro terminal (fora do Mininet ou numa xterm do Mininet):
-```bash
-python3 p4_register_exporter.py \
-    --thrift-port 9090 \
-    --switch-id 1 \
-    --controller 127.0.0.1 \
-    --interval 1.0
+Dentro do Mininet, no host `h1` (ou em outro terminal com acesso ao Thrift):
+
+```
+mininet> h1 xterm -e "python3 p4_register_exporter.py --thrift-port 9090 --switch-id 1 --controller 127.0.0.1 --interval 1.0"
 ```
 
-#### Passo 5 — Gerar tráfego no Mininet
+#### Passo 5 — Gerar tráfego normal/ataque/recuperação
 
-Dentro da CLI do Mininet:
+Ainda dentro do Mininet, execute o gerador no host `h1`:
+
 ```
-mininet> h1 ping h2 -c 100
-mininet> h1 ping h3 -c 100 &
-mininet> h2 iperf -s &
-mininet> h1 iperf -c 10.0.0.2 -t 30
+mininet> h1 python3 traffic_generator.py
 ```
 
----
+O gerador executa:
+1. **Normal**: `ping -i 1 10.0.0.2` por 10s.
+2. **Ataque**: `ping -f 10.0.0.2` por 15s.
+3. **Recuperação**: `ping -i 1 10.0.0.2` por 10s.
 
-## Testes com o receptor standalone
+#### Passo 6 — Observar a demonstração
 
-```bash
-# Terminal 1 — receptor apenas (sem dashboard)
-python3 telemetry_receiver.py --port 9999
-
-# Terminal 2 — simulador
-python3 telemetry_simulator.py
-```
-
----
-
-## Identificação do switch de origem
-
-Cada pacote UDP contém o campo `switch_id` nos primeiros 4 bytes.
-O controlador usa esse campo como chave nos dicionários `latest_metrics` e `history`.
-Para múltiplos switches, basta que cada instância do exportador envie um `switch_id` diferente.
-O dashboard criará automaticamente um card de gráfico e uma linha na tabela por switch.
-
----
-
-## Adaptação para outros mecanismos de telemetria
-
-| Mecanismo | O que mudar |
-|-----------|-------------|
-| Clone de pacotes (mirroring) | Receber com `AF_PACKET` ou `scapy`; remover headers Ethernet/IP antes de chamar `decode_telemetry()` |
-| INT (In-band Network Telemetry) | Parsear o stack INT com scapy; extrair metadados de cada hop |
-| gRPC / gNMI | Substituir `udp_receiver()` por um channel gRPC; deserializar protobuf |
-| Kafka / NATS | Substituir `udp_receiver()` por um consumer do broker |
+No dashboard e nos logs do controlador você deve ver:
+- Fase normal: taxa baixa, status **Normal**.
+- Fase de ataque: taxa ultrapassa 120 pkts/s e, após 2 amostras, o controlador instala a regra de `drop` para `10.0.0.1`.
+- Durante o bloqueio: `h1` não consegue mais pingar `h2`, mas `h2` e `h3` continuam se comunicando.
+- Fase de recuperação: após 5 amostras abaixo do limiar, a regra é removida e o status volta a **Normal**.
 
 ---
 
@@ -204,18 +207,36 @@ O dashboard criará automaticamente um card de gráfico e uma linha na tabela po
 # Verificar se o controlador está escutando na porta UDP
 ss -ulnp | grep 9999
 
+# Verificar regras instaladas no switch
+simple_switch_CLI --thrift-port 9090
+table_dump MyIngress.drop_table
+table_dump MyIngress.ipv4_lpm
+
 # Enviar um pacote de telemetria de teste manual
 python3 -c "
 import socket, struct
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-payload = struct.pack('!IQQIb', 1, 500, 64000, 20, 62)
+payload = struct.pack('!IQQIB', 1, 500, 64000, 20, 62)
 s.sendto(payload, ('127.0.0.1', 9999))
 print('Enviado!')
 "
 
 # Ver logs do controlador em tempo real
-tail -f /tmp/controller.log  # se redirecionar stdout
+# (redirecione a saída para um arquivo, se desejado)
+tail -f /tmp/controller_t4.log
 ```
+
+---
+
+## Critérios de aceitação
+
+- [ ] `telemetry.p4` compila sem erros.
+- [ ] Controlador recebe telemetria e calcula `pkts/s`.
+- [ ] Quando `pkts/s > 120` por 2 amostras, regra de `drop` para `10.0.0.1` é instalada.
+- [ ] Tráfego de `h1` para `h2` é interrompido após o bloqueio.
+- [ ] Tráfego entre `h2` e `h3` continua funcionando.
+- [ ] Quando `pkts/s < 120` por 5 amostras, a regra é removida.
+- [ ] Dashboard mostra taxa, status e log de ações.
 
 ---
 
