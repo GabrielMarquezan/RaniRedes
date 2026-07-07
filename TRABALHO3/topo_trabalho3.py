@@ -22,12 +22,19 @@ from mininet.log import setLogLevel, info
 from mininet.cli import CLI
 
 # Tenta importar P4Switch do repositório p4lang/tutorials
+import pwd
+
+sudo_user = os.environ.get('SUDO_USER')
+if sudo_user:
+    home = pwd.getpwnam(sudo_user).pw_dir
+else:
+    home = os.path.expanduser('~')
+sys.path.insert(0, os.path.join(home, 'tutorials', 'utils'))
+
 try:
-    sys.path.insert(0, os.path.expanduser('~/tutorials/utils'))
-    from p4_mininet import P4Switch, P4Host  # type: ignore
-except ImportError:
-    print("[ERRO] p4_mininet não encontrado.")
-    print("       Clone https://github.com/p4lang/tutorials e ajuste o path.")
+    from p4_mininet import P4Switch, P4Host
+except ImportError as exc:
+    print("[ERRO] p4_mininet não encontrado:", exc)
     sys.exit(1)
 
 # ─────────────────────────────────────────────────────────────────────────────

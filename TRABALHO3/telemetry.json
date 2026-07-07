@@ -321,7 +321,7 @@
       "id" : 0,
       "source_info" : {
         "filename" : "telemetry.p4",
-        "line" : 308,
+        "line" : 335,
         "column" : 8,
         "source_fragment" : "MyDeparser"
       },
@@ -387,7 +387,7 @@
       "id" : 0,
       "source_info" : {
         "filename" : "telemetry.p4",
-        "line" : 285,
+        "line" : 312,
         "column" : 8,
         "source_fragment" : "update_checksum( ..."
       },
@@ -449,8 +449,14 @@
       "primitives" : []
     },
     {
-      "name" : "MyIngress.forward",
+      "name" : "NoAction",
       "id" : 1,
+      "runtime_data" : [],
+      "primitives" : []
+    },
+    {
+      "name" : "MyIngress.forward",
+      "id" : 2,
       "runtime_data" : [
         {
           "name" : "port",
@@ -995,28 +1001,6 @@
     },
     {
       "name" : "MyIngress.drop",
-      "id" : 2,
-      "runtime_data" : [],
-      "primitives" : [
-        {
-          "op" : "mark_to_drop",
-          "parameters" : [
-            {
-              "type" : "header",
-              "value" : "standard_metadata"
-            }
-          ],
-          "source_info" : {
-            "filename" : "telemetry.p4",
-            "line" : 223,
-            "column" : 8,
-            "source_fragment" : "mark_to_drop(standard_metadata)"
-          }
-        }
-      ]
-    },
-    {
-      "name" : "MyIngress.drop",
       "id" : 3,
       "runtime_data" : [],
       "primitives" : [
@@ -1038,27 +1022,23 @@
       ]
     },
     {
-      "name" : "telemetry241",
+      "name" : "MyIngress.drop",
       "id" : 4,
       "runtime_data" : [],
       "primitives" : [
         {
-          "op" : "assign",
+          "op" : "mark_to_drop",
           "parameters" : [
             {
-              "type" : "field",
-              "value" : ["scalars", "metadata.send_telemetry"]
-            },
-            {
-              "type" : "hexstr",
-              "value" : "0x00"
+              "type" : "header",
+              "value" : "standard_metadata"
             }
           ],
           "source_info" : {
             "filename" : "telemetry.p4",
-            "line" : 241,
+            "line" : 223,
             "column" : 8,
-            "source_fragment" : "meta.send_telemetry = 0"
+            "source_fragment" : "mark_to_drop(standard_metadata)"
           }
         }
       ]
@@ -1074,72 +1054,51 @@
         "column" : 8,
         "source_fragment" : "MyIngress"
       },
-      "init_table" : "tbl_telemetry241",
+      "init_table" : "node_2",
       "tables" : [
         {
-          "name" : "tbl_telemetry241",
+          "name" : "MyIngress.drop_table",
           "id" : 0,
           "source_info" : {
             "filename" : "telemetry.p4",
-            "line" : 241,
-            "column" : 28,
-            "source_fragment" : "="
+            "line" : 227,
+            "column" : 10,
+            "source_fragment" : "drop_table"
           },
-          "key" : [],
+          "key" : [
+            {
+              "match_type" : "exact",
+              "name" : "hdr.ipv4.srcAddr",
+              "target" : ["ipv4", "srcAddr"],
+              "mask" : null
+            }
+          ],
           "match_type" : "exact",
           "type" : "simple",
           "max_size" : 1024,
           "with_counters" : false,
           "support_timeout" : false,
           "direct_meters" : null,
-          "action_ids" : [4],
-          "actions" : ["telemetry241"],
-          "base_default_next" : "node_3",
-          "next_tables" : {
-            "telemetry241" : "node_3"
-          },
-          "default_entry" : {
-            "action_id" : 4,
-            "action_const" : true,
-            "action_data" : [],
-            "action_entry_const" : true
-          }
-        },
-        {
-          "name" : "tbl_drop",
-          "id" : 1,
-          "source_info" : {
-            "filename" : "telemetry.p4",
-            "line" : 245,
-            "column" : 16,
-            "source_fragment" : "drop()"
-          },
-          "key" : [],
-          "match_type" : "exact",
-          "type" : "simple",
-          "max_size" : 1024,
-          "with_counters" : false,
-          "support_timeout" : false,
-          "direct_meters" : null,
-          "action_ids" : [3],
-          "actions" : ["MyIngress.drop"],
+          "action_ids" : [3, 0],
+          "actions" : ["MyIngress.drop", "NoAction"],
           "base_default_next" : null,
           "next_tables" : {
-            "MyIngress.drop" : null
+            "MyIngress.drop" : null,
+            "NoAction" : "MyIngress.ipv4_lpm"
           },
           "default_entry" : {
-            "action_id" : 3,
-            "action_const" : true,
+            "action_id" : 0,
+            "action_const" : false,
             "action_data" : [],
-            "action_entry_const" : true
+            "action_entry_const" : false
           }
         },
         {
           "name" : "MyIngress.ipv4_lpm",
-          "id" : 2,
+          "id" : 1,
           "source_info" : {
             "filename" : "telemetry.p4",
-            "line" : 227,
+            "line" : 240,
             "column" : 10,
             "source_fragment" : "ipv4_lpm"
           },
@@ -1157,7 +1116,7 @@
           "with_counters" : false,
           "support_timeout" : false,
           "direct_meters" : null,
-          "action_ids" : [1, 2, 0],
+          "action_ids" : [2, 4, 1],
           "actions" : ["MyIngress.forward", "MyIngress.drop", "NoAction"],
           "base_default_next" : null,
           "next_tables" : {
@@ -1166,7 +1125,7 @@
             "NoAction" : null
           },
           "default_entry" : {
-            "action_id" : 2,
+            "action_id" : 4,
             "action_const" : false,
             "action_data" : [],
             "action_entry_const" : false
@@ -1176,11 +1135,11 @@
       "action_profiles" : [],
       "conditionals" : [
         {
-          "name" : "node_3",
+          "name" : "node_2",
           "id" : 0,
           "source_info" : {
             "filename" : "telemetry.p4",
-            "line" : 243,
+            "line" : 255,
             "column" : 12,
             "source_fragment" : "hdr.ipv4.isValid()"
           },
@@ -1196,33 +1155,7 @@
             }
           },
           "false_next" : null,
-          "true_next" : "node_4"
-        },
-        {
-          "name" : "node_4",
-          "id" : 1,
-          "source_info" : {
-            "filename" : "telemetry.p4",
-            "line" : 244,
-            "column" : 16,
-            "source_fragment" : "hdr.ipv4.ttl == 0"
-          },
-          "expression" : {
-            "type" : "expression",
-            "value" : {
-              "op" : "==",
-              "left" : {
-                "type" : "field",
-                "value" : ["ipv4", "ttl"]
-              },
-              "right" : {
-                "type" : "hexstr",
-                "value" : "0x00"
-              }
-            }
-          },
-          "true_next" : "tbl_drop",
-          "false_next" : "MyIngress.ipv4_lpm"
+          "true_next" : "MyIngress.drop_table"
         }
       ]
     },
@@ -1231,7 +1164,7 @@
       "id" : 1,
       "source_info" : {
         "filename" : "telemetry.p4",
-        "line" : 257,
+        "line" : 284,
         "column" : 8,
         "source_fragment" : "MyEgress"
       },
@@ -1247,7 +1180,7 @@
       "id" : 0,
       "source_info" : {
         "filename" : "telemetry.p4",
-        "line" : 285,
+        "line" : 312,
         "column" : 8,
         "source_fragment" : "update_checksum( ..."
       },
@@ -1309,7 +1242,7 @@
       ["standard_metadata", "priority"]
     ]
   ],
-  "program" : "telemetry.json/telemetry.p4i",
+  "program" : "telemetry.p4",
   "__meta__" : {
     "version" : [2, 23],
     "compiler" : "https://github.com/p4lang/p4c"
