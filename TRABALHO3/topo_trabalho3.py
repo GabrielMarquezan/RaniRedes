@@ -95,7 +95,19 @@ def install_rules(net):
             f"| simple_switch_CLI --thrift-port {thrift_port}"
         )
         info(f"  [RULE] {sw_name}: {table} {match} → {action}({param_str})\n")
-        subprocess.run(cmd, shell=True, check=False)
+        try:
+            result = subprocess.run(
+                cmd, shell=True, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, timeout=5, check=False
+            )
+            stdout = result.stdout.decode(errors="replace").strip()
+            stderr = result.stderr.decode(errors="replace").strip()
+            if result.returncode != 0 or "Error" in stdout or "Invalid" in stdout:
+                info(f"  [RULE ERROR] {sw_name}: rc={result.returncode} stderr={stderr} stdout={stdout}\n")
+            else:
+                info(f"  [RULE OK] {sw_name}: {stdout.splitlines()[-1] if stdout else 'ok'}\n")
+        except Exception as exc:
+            info(f"  [RULE EXCEPTION] {sw_name}: {exc}\n")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -68,10 +68,10 @@ def find_cli_path(cli_path: str | None) -> str:
     return found
 
 
-def read_register_cli(reg_name: str, thrift_port: int, cli_path: str) -> int:
+def read_register_cli_raw(reg_name: str, thrift_port: int, cli_path: str) -> tuple[int, str, str, int]:
     """
-    Lê um registrador P4 via simple_switch_CLI.
-    Retorna o valor inteiro no índice 0.
+    Executa register_read via simple_switch_CLI e retorna
+    (valor, stdout, stderr, return_code). Valor é 0 se houver falha.
     """
     cli_cmd = find_cli_path(cli_path)
     cmd = (
@@ -95,7 +95,7 @@ def read_register_cli(reg_name: str, thrift_port: int, cli_path: str) -> int:
                 "simple_switch_CLI falhou para %s (rc=%d): %s",
                 reg_name, out.returncode, stderr.strip() or stdout.strip()
             )
-            return 0
+            return 0, stdout, stderr, out.returncode
 
         # A saída pode ter formatos como:
         #   reg_name[0]= 123
@@ -106,13 +106,13 @@ def read_register_cli(reg_name: str, thrift_port: int, cli_path: str) -> int:
             if reg_name in line:
                 match = re.search(r"[\:\=]\s*(\d+)", line)
                 if match:
-                    return int(match.group(1))
+                    return int(match.group(1)), stdout, stderr, out.returncode
 
         log.warning(
             "Não foi possível fazer parse do valor de %s. Saída:\n%s",
             reg_name, stdout
         )
-        return 0
+        return 0, stdout, stderr, out.returncode
 
     except subprocess.TimeoutExpired:
         log.error("Timeout ao ler %s via simple_switch_CLI", reg_name)
@@ -120,7 +120,15 @@ def read_register_cli(reg_name: str, thrift_port: int, cli_path: str) -> int:
         log.error("%s", exc)
     except Exception as exc:
         log.error("Erro inesperado ao ler %s: %s", reg_name, exc)
-    return 0
+    return 0, "", "", -1
+
+
+def read_register_cli(reg_name: str, thrift_port: int, cli_path: str) -> int:
+    """Lê um registrador P4 via simple_switch_CLI (apenas o valor)."""
+    value, stdout, stderr, rc = read_register_cli_raw(reg_name, thrift_port, cli_path)
+    log.debug("read_register_cli(%s) -> value=%d rc=%d stdout=%r stderr=%r",
+              reg_name, value, rc, stdout.strip(), stderr.strip())
+    return value
 
 
 def read_all_registers(thrift_port: int, cli_path: str) -> dict:
@@ -131,6 +139,20 @@ def read_all_registers(thrift_port: int, cli_path: str) -> dict:
         "icmp_count":   read_register_cli("reg_icmp_count",   thrift_port, cli_path),
         "min_ttl":      read_register_cli("reg_min_ttl",      thrift_port, cli_path),
     }
+
+
+def read_all_registers_debug(thrift_port: int, cli_path: str) -> dict:
+    """Lê todos os registradores e loga a saída bruta de cada comando."""
+    regs = {}
+    for reg_name in ["reg_packet_count", "reg_byte_count", "reg_icmp_count", "reg_min_ttl"]:
+        value, stdout, stderr, rc = read_register_cli_raw(reg_name, thrift_port, cli_path)
+        short = reg_name.replace("reg_", "")
+        regs[short] = value
+        log.info(
+            "DEBUG %s -> value=%d | rc=%d | stdout=%r | stderr=%r",
+            reg_name, value, rc, stdout.strip(), stderr.strip()
+        )
+    return regs
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -219,6 +241,24 @@ def diagnose_thrift(thrift_port: int, cli_path: str) -> bool:
 # Loop principal
 # ─────────────────────────────────────────────────────────────────────────────
 
+def run_once(thrift_port: int, switch_id: int, controller_host: str,
+             controller_port: int, cli_path: str, send_udp: bool = True) -> dict:
+    """
+    Executa uma única leitura de registradores, loga a saída bruta e,
+    opcionalmente, envia um único datagrama UDP.
+    """
+    log.info("Modo --once: lendo registradores e exibindo saída bruta do CLI")
+    regs = read_all_registers_debug(thrift_port, cli_path)
+
+    if send_udp:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        addr = (controller_host, controller_port)
+        send_telemetry(sock, addr, switch_id, regs)
+        sock.close()
+
+    return regs
+
+
 def run(thrift_port: int, switch_id: int, controller_host: str,
         controller_port: int, interval: float, cli_path: str) -> None:
 
@@ -263,16 +303,26 @@ if __name__ == "__main__":
     parser.add_argument("--interval",        type=float, default=1.0,         help="Intervalo de exportação (s)")
     parser.add_argument("--cli-path",        default=None,                    help="Caminho do executável simple_switch_CLI")
     parser.add_argument("--debug",           action="store_true",             help="Habilita logs de debug")
+    parser.add_argument("--once",            action="store_true",             help="Lê registradores uma única vez, loga saída bruta e encerra")
     args = parser.parse_args()
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    run(
-        thrift_port=args.thrift_port,
-        switch_id=args.switch_id,
-        controller_host=args.controller,
-        controller_port=args.controller_port,
-        interval=args.interval,
-        cli_path=args.cli_path,
-    )
+    if args.once:
+        run_once(
+            thrift_port=args.thrift_port,
+            switch_id=args.switch_id,
+            controller_host=args.controller,
+            controller_port=args.controller_port,
+            cli_path=args.cli_path,
+        )
+    else:
+        run(
+            thrift_port=args.thrift_port,
+            switch_id=args.switch_id,
+            controller_host=args.controller,
+            controller_port=args.controller_port,
+            interval=args.interval,
+            cli_path=args.cli_path,
+        )
